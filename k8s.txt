@@ -1,0 +1,98 @@
+Kubernetes is used to orchestrate and manage containerized applications at scale. It provides features like automatic scaling, self-healing, load balancing, rolling updates, and efficient resource management.
+===============architecture ==================
+Control Plane Components (Master Node)
+The API Server is the entry point for all Kubernetes operations
+.etcd is the key-value database used by Kubernetes.
+The Scheduler decides which node should run a pod.
+The Controller Manager ensures the cluster's desired state is maintained.
+worker node 
+Kubelet is the agent running on each node.
+container runtime -This runs the containers.
+Kube Proxy manages networking for pods.
+=================pod=============
+A Pod is the smallest deployable unit in Kubernetes that contains one or more containers running together on the same node, sharing network and storage resources.
+================containers=============
+A container is a lightweight package that runs an application with its dependencies, whereas a pod is the smallest unit in Kubernetes that wraps and manages one or more containers that share network and storage resources.
+===============ReplicaSetand Deployments ===========
+Replication Controller and ReplicaSet ensure a specified number of pods are running in Kubernetes. ReplicaSet is the improved version of Replication Controller. Deployments manage ReplicaSets and provide advanced features like rolling updates, rollback, and scaling of applications.
+=================service===== (it will work as like alb/nlb)
+Whenever a Pod restarts, its IP address changes because Pod IPs are ephemeral.
+So it becomes difficult for applications to send requests directly using Pod IPs.
+To solve this, a Service in Kubernetes provides a stable IP address that never changes.
+The Service forwards requests to the correct Pods.
+Behind the scenes:
+Endpoints maintain the list of Pod IP addresses that belong to the Service
+The Endpoint Controller continuously watches Pods and updates this list
+kube-proxy runs on every node and maintains network rule
+So when a request comes to the Service IP, kube-proxy routes the traffic to one of the healthy Pods.
+======service type ===
+==ClusterIP
+Used for internal communication inside the Kubernetes cluster.
+Mainly for Pod-to-Pod or service-to-service communication.
+Example:
+Frontend Pod → Backend Service → Backend Pods
+🟡 NodePort
+Used to expose the application to external users by opening a port on every node.
+Accessed using NodeIP + Port Number.
+Example:
+User → NodeIP:30007 → Service → Pods
+🔵 LoadBalancer
+Used to expose applications to the internet using a cloud load balancer.
+It provides a public IP and distributes traffic across nodes and Pods.
+Works in cloud platforms like:Amazon Web Services
+=================namespace ====
+A Namespace in Kubernetes is a logical partition inside a cluster used to organize resources, avoid naming conflicts, manage access control, and allocate resources among teams.
+=================multicontainer pod====
+A multi-container pod is a pod that runs multiple containers together. One container runs the main application and the other containers act as helper containers such as log collectors or monitoring agents. All containers share the same network, storage, and lifecycle.
+hey usually follow some common design patterns.
+1️⃣ Sidecar Container====== run along with main application to collect the live logs 
+2️⃣ Init Container============An Init Container runs before the main container starts.like downloding the dependency file , Check database availability,Create directories, load secrets.
+3️⃣ Ambassador Container=========he Ambassador container acts like a proxy for the main application.Instead of connecting directly to external services, the application communicates through the ambassador.
+4️⃣ Adapter Container=========An Adapter container converts application output into a format required by another system
+===============daemonset pod======
+In Kubernetes, each DaemonSet runs one Pod on every node. If a cluster has multiple DaemonSets, each node will run one Pod from each DaemonSet. In real production environments, a node typically runs around 4 to 8 DaemonSet Pods depending on logging, monitoring, networking, and security components.
+=================static pod ============
+Static Pods are mostly used for Kubernetes control plane components.api , scheduler, controller ,etcd These are often run as static pods on the control plane node.
+==========taintsand toleration=======
+Taints and tolerations are used in Kubernetes to control Pod scheduling on nodes. A taint is applied to a node to repel Pods from being scheduled on it, while a toleration is applied to a Pod to allow it to run on a tainted node.
+NoSchedule → New pods cannot run on this node unless they have a toleration.
+PreferNoSchedule → Kubernetes tries to avoid scheduling pods on this node, but it may still place pods if needed.
+NoExecute → existing pods will be removed (evicted) if they don't have toleration.
+=========Node Affinity======
+ is a rule that tells Kubernetes scheduler which nodes a Pod is allowed to run on and it has 2 rule ====(hard rule )requiredDuringSchedulingIgnoredDuringExecution ==Pod MUST run on matching node ===Pod → Pending
+ (soft rule)preferredDuringSchedulingIgnoredDuringExecution==Scheduler will try to place Pod on preferred node if not Pod can run on other nodes
+ ========Resource Requests and Limits=======
+ Resource Requests and Limits in Kubernetes are used to control CPU and memory usage for containers. Requests define the minimum resources required for scheduling a pod, while limits define the maximum resources a container can consume. If a container exceeds CPU limits it is throttled, and if it exceeds memory limits it may be terminated with an OOMKilled error
+ ===========Quality of Service-==========
+ Kubernetes assigns Quality of Service classes to pods based on their CPU and memory requests and limits. Pods with equal requests and limits get Guaranteed QoS, pods with requests lower than limits get Burstable QoS, and pods without requests or limits get BestEffort QoS. During resource pressure, Kubernetes evicts BestEffort pods first, then Burstable, and Guaranteed pods last.
+ ======autoscaling =====
+ Kubernetes supports multiple autoscaling mechanisms. Horizontal Pod Autoscaler scales the number of pods based on CPU or memory usage, while Vertical Pod Autoscaler adjusts CPU and memory resources of pods. Cluster Autoscaler automatically adds or removes nodes when pods cannot be scheduled due to resource shortage. Metrics Server collects resource metrics that HPA uses for scaling decisions.
+ =====probs=====
+-> Kubernetes provides three types of probes: Startup, Liveness, and Readiness. Startup probe checks whether the application has started successfully, especially for slow-starting applications. Liveness probe checks if the application is still running and restarts the container if it fails. Readiness probe checks if the application is ready to serve traffic, and if it fails, the pod is removed from service endpoints without restarting.
+-> Kubernetes supports three types of health checks: HTTP, TCP, and command-based checks. HTTP checks send a request to an application endpoint and expect a successful response. TCP checks verify whether a port is open. Command-based checks execute a command inside the container and check the exit status. These are used by liveness, readiness, and startup probes to determine container health.
+====congifmap and secrets=====
+->ConfigMaps and Secrets can be consumed by pods either as environment variables or mounted as files. Kubernetes injects these values into the container at runtime. We can verify them using kubectl exec and checking environment variables or file paths inside the pod.
+->Common mistakes with ConfigMaps and Secrets include storing sensitive data in ConfigMaps, assuming Secrets are fully secure, forgetting to restart pods after updating environment variables, using incorrect keys or names, and exposing sensitive data in logs. In real-time projects, we also ensure proper RBAC and use external secret management tools for better security.
+->Secrets can be updated using kubectl or YAML files. If the secret is consumed as an environment variable, the pods must be restarted to pick up the new value. If it is mounted as a volume, the changes are automatically reflected inside the pod. In real-time, we often trigger a rollout restart or use annotations to ensure pods pick up updated secrets.
+In production, we automate secret updates using CI/CD pipelines and integrate with external tools like AWS Secrets Manager to avoid manual handling.
+======rbac=======
+n Amazon EKS, to provide access to a user, we first create an IAM user or IAM role in AWS IAM, which is used for authentication. This IAM identity must then be mapped in the aws-auth ConfigMap in the kube-system namespace, where it is associated with a Kubernetes username and group. After authentication, Kubernetes RBAC is used for authorization by creating a Role or ClusterRole to define permissions. A RoleBinding (for namespace-level access) or ClusterRoleBinding (for cluster-level access) is then used to assign these permissions to the user or group. Unlike standard Kubernetes clusters that use certificates for authentication, EKS relies on IAM for authentication and RBAC for authorization
+==>In standard Kubernetes, users are authenticated using certificates created via private key and CSR. After approval, the certificate is configured in kubeconfig. Kubernetes identifies users based on the certificate (CommandName and Orignazation ), and RBAC is used for authorization by defining Roles/ClusterRoles and binding them using RoleBindings or ClusterRoleBindings.”
+===========What is a network policy===========
+Network policy allows you to control the Inbound and Outbound traffic to and from the cluster. For example, you can specify a deny-all network policy that restricts all incoming traffic to the cluster, or you can create an allow-network policy that will only allow certain services to be accessed by certain pods on a specific port.
+Not all CNI plugins support NetworkPolicy; only plugins like Calico and Cilium enforce it, while Flannel does not.”
+Traffic Types:
+Ingress: Incoming traffic to a pod.     * Egress: Outgoing traffic from a pod. * CNI (Container Network Interface): These are networking plugins like Calico, Weave, or Cilium that implement the network. Crucially, not all CNIs support Network Policies (e.g., Flannel and the default KindNet do not).
+=======Docker Volume Explained - Docker Bind Mount - Docker Persistent Storage=====
+Docker Volume (Short Note)
+Docker volumes in Docker are used for persistent storage. They are managed by Docker and store data outside the container, so data is not lost when the container is deleted. Volumes are secure, portable, and mainly used in production for databases, logs, and important data.
+📝 Bind Mount (Short Note)
+Bind mounts in Docker link a host machine folder to a container folder. Changes reflect in real time on both sides, making them useful for development and testing. They depend on local paths and are not recommended for production.
+======Kubernetes Storage (Correct Concept Notes)=====
+In Amazon EKS, we do not create Amazon EBS volumes manually through YAML; instead, we create a Persistent Volume Claim (PVC), which is a request for storage (for example, 10GB). This PVC uses a StorageClass (such as gp3) that defines the type of storage to be provisioned. Based on this, Kubernetes automatically creates a Persistent Volume (PV), which is the actual EBS volume in AWS, and attaches it to the Pod for usage. Additionally, if the storage needs to be increased, we can simply edit the PVC and update the size (for example, from 10GB to 20GB), and Kubernetes will automatically expand the underlying EBS volume, provided the StorageClass supports volume expansion. In simple terms, PVC requests the storage, StorageClass defines how it should be created, Kubernetes provisions the actual EBS volume (PV), and it can also be resized later by updating the PVC.
+========ingress and ingress controller ====
+n Kubernetes, applications often need to communicate with the outside world. If we create a separate LoadBalancer for each service, it becomes costly and hard to manage. To solve this, we use Ingress, which acts as a single entry point in front of all applications. It uses one LoadBalancer and performs host-based and path-based routing to direct traffic to different services.
+Ingress also helps in managing SSL/TLS certificates in one place, instead of configuring HTTPS separately for each application. Additionally, it supports advanced features like URL rewriting, rate limiting, and authentication at the entry point.
+
+
+Ingress itself is just a set of routing rules, and an Ingress Controller (such as NGINX or AWS ALB in Amazon EKS) is responsible for implementing and executing those rules.
